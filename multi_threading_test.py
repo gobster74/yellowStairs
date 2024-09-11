@@ -19,7 +19,8 @@ times_computer = np.empty(frames_captured)
 # This function will run in a separate thread, continuously capturing frames
 def capture_frames():
     for ii in range(frames_captured):
-        frame_buffer[ii] = optris.get_thermal_image(w, h)
+        thermal_image = optris.get_thermal_image(w, h)[0]  # Adjust if necessary, using [0] extracts just the thermal image from the tuple or list.
+        frame_buffer[ii] = thermal_image
         times_computer[ii] = time.time()
 
 start_time = time.time()
