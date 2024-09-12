@@ -1,11 +1,17 @@
 import pyOptris as optris
-import time as time
+import time
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-# USB connection initialisation
-optris.usb_init('17092037f.xml')
 
+# USB connection initialization
+try:
+    optris.usb_init('17092037f.xml')
+except Exception as e:
+    print(f"Error initializing camera: {e}")
+    exit(1)
+
+# Retrieve image sizes
 w, h = optris.get_thermal_image_size()
 pw, ph = optris.get_palette_image_size()
 print('{} x {}'.format(w, h))
@@ -23,50 +29,54 @@ def convert_to_temperature_image(temperature_array):
 
     return colormap
 
-
-wp, hp = optris.get_palette_image_size()
-
 frames_captured = 5000
+frame_buffer = np.empty((frames_captured, h, w), dtype=np.uint8)  # Adjust size as necessary
 
-frame_buffer = np.empty((72,56,4*1000))
-times_computer =  np.empty((1000))
+start_time = time.time()
 
-
-start_Time = time.time()
-
-times =[]
-counter = 2000
+times = []
 frame_counter = 0
-for count in range(frames_captured):
-    if frame_counter%counter ==0:
-        times.append(time.time()-start_Time)
-        if len(times)>3:
-            print("Mean Time per frame is {} s".format((times[-1]-times[-2])/counter))
-            print("Mean Freq per frame is {} Hz".format(counter/(times[-1]-times[-2])))
-    optris.get_thermal_image(w, h)
+counter = 2000
 
-
-    frame_counter +=1
+try:
+    for count in range(frames_captured):
+        # Capture thermal image
+        frame = optris.get_thermal_image(w, h)
         
+        # Store frame in buffer
+        frame_buffer[count] = frame
 
+        if (count + 1) % counter == 0:
+            elapsed_time = time.time() - start_time
+            times.append(elapsed_time)
+            if len(times) > 1:
+                mean_time_per_frame = (times[-1] - times[-2]) / counter
+                mean_freq_per_frame = counter / (times[-1] - times[-2])
+                print(f"Mean Time per frame is {mean_time_per_frame:.3f} s")
+                print(f"Mean Freq per frame is {mean_freq_per_frame:.2f} Hz")
 
+        frame_counter += 1
 
+except Exception as e:
+    print(f"Error during capture: {e}")
 
-
-
+finally:
+    end_time = time.time()
+    recording_time = end_time - start_time
+    print(f"Recording Time is {recording_time:.2f} s")
+    print(f"Mean Time per frame is {recording_time / frames_captured:.3f} s")
+    print(f"Mean Freq per frame is {frames_captured / recording_time:.2f} Hz")
     
-end_time = time.time()
+    # Terminate connection
+    optris.terminate()
 
+    # Optionally save the buffer or visualize some frames
+    # Example of saving a few frames
+    for i in range(min(10, frames_captured)):
+        plt.imshow(convert_to_temperature_image(frame_buffer[i]), cmap='jet')
+        plt.title(f'Frame {i}')
+        plt.colorbar()
+        plt.show()
 
-recording_time = end_time-start_Time
-print("Recording Time is {}S".format(recording_time))
-optris.terminate()
-
-# plt.figure()
-# plt.plot(times_computer-times_computer[0])
-# plt.plot(np.linspace(0,1,1000))
-# plt.show()
-print("Mean Time per frame is {} s".format(recording_time/frames_captured))
-print("Mean Freq per frame is {} Hz".format(frames_captured/recording_time))
 
 
