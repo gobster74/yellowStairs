@@ -47,7 +47,7 @@ if w == -1 or h == -1:
     optris.terminate()
     exit(1)
 
-# Function to start/stop recording
+#  start/stop recording
 def toggle_recording():
     global recording
     recording = not recording
@@ -56,14 +56,14 @@ def toggle_recording():
     else:
         stop_recording()
 
-# Function to start recording
+# start recording
 def start_recording():
     global frame_buffer, times_computer
     frame_buffer = []
     times_computer = []
     print("Recording started")
 
-# Function to stop recording and save data
+# stop recording and save data
 def stop_recording():
     global frame_buffer, times_computer
     if frame_buffer:
@@ -73,7 +73,7 @@ def stop_recording():
     else:
         print("No data to save")
 
-# creates GUI
+# GUI
 def create_gui():
     window = tk.Tk()
     window.title("Thermal Camera Control")

@@ -1,35 +1,76 @@
 import numpy as np
+import cv2
+import os
+import glob
 
-def load_data(counter):
-    # Define filenames based on the counter value
-    frame_buffer_file = f'frame_buffer_{counter}.npy'
-    times_computer_file = f'times_computer_{counter}.npy'
+def list_saved_files():
+    buffer_files = glob.glob('frame_buffer_*.npy')
+    time_files = glob.glob('times_computer_*.npy')
     
+    buffer_files.sort()  # Sort by filename
+    time_files.sort()
+
+    print("Available saved files:")
+    for i, file in enumerate(buffer_files):
+        print(f"{i}: {file}")
+
+    return buffer_files, time_files
+
+def load_saved_data(buffer_file, time_file):
     try:
-        # Load the data from files
-        frame_buffer = np.load(frame_buffer_file)
-        times_computer = np.load(times_computer_file)
-        
-        # Print shapes to confirm successful loading
+        frame_buffer = np.load(buffer_file)
+        times_computer = np.load(time_file)
         print(f"Loaded frame_buffer shape: {frame_buffer.shape}")
         print(f"Loaded times_computer shape: {times_computer.shape}")
-        
-        return frame_buffer, times_computer
-    
-    except FileNotFoundError as e:
-        print(f"Error: {e}. Check if the file exists and the counter is correct.")
+    except FileNotFoundError:
+        print(f"File not found: {buffer_file} or {time_file}")
         return None, None
 
-# Specify the counter value to load
-counter_to_load = 8  # Change this to the desired counter value
-frame_buffer, times_computer = load_data(counter_to_load)
+    return frame_buffer, times_computer
 
-if frame_buffer is not None and times_computer is not None:
-    # Example usage of the loaded data
-    # Display the first frame, for instance
-    import matplotlib.pyplot as plt
+def display_saved_data(frame_buffer, scale_factor=3):
+    if frame_buffer is None:
+        print("No frame buffer to display.")
+        return
+
+    h, w = frame_buffer.shape[1], frame_buffer.shape[2]
+
+    # Create a window to display the frames
+    cv2.namedWindow('Thermal Stream', cv2.WINDOW_NORMAL)
+    for i, frame in enumerate(frame_buffer):
+        # Normalize frame to 0-255 for display
+        normalized_image = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX)
+        display_image = np.uint8(normalized_image)
+
+        # Apply a colormap to simulate the heatmap look of Optris PIX
+        color_image = cv2.applyColorMap(display_image, cv2.COLORMAP_JET)
+
+        # Resize the image for larger display
+        resized_image = cv2.resize(color_image, (w * scale_factor, h * scale_factor), interpolation=cv2.INTER_LINEAR)
+
+        # Show the frame in the same window
+        cv2.imshow('Thermal Stream', resized_image)
+
+        # Press 'q' to quit the display loop
+        if cv2.waitKey(100) & 0xFF == ord('q'):
+            print("Exiting display...")
+            break
+
+    # Close the window after the loop
+    cv2.destroyWindow('Thermal Stream')
+
+# Example to list, select, load, and display saved data
+buffer_files, time_files = list_saved_files()
+
+if buffer_files and time_files:
+    selected_index = int(input(f"Enter the file index (0 to {len(buffer_files)-1}): "))
     
-    plt.imshow(frame_buffer[900], cmap='hot')
-    plt.colorbar()
-    plt.title(f'Frame {frame_buffer} from counter {counter_to_load}')
-    plt.show()
+    if 0 <= selected_index < len(buffer_files):
+        frame_buffer, times_computer = load_saved_data(buffer_files[selected_index], time_files[selected_index])
+        
+        if frame_buffer is not None and times_computer is not None:
+            display_saved_data(frame_buffer)
+    else:
+        print("Invalid file index.")
+else:
+    print("No saved files found.")

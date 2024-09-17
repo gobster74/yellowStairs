@@ -1,2 +1,1 @@
-17092037f.xml
-1
+another_camera_file.xml
