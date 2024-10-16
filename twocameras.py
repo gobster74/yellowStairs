@@ -4,6 +4,7 @@ import pyOptris as optris
 import time
 import threading
 import tkinter as tk
+import ctypes
 
 # Global variables
 recording = False
@@ -37,7 +38,11 @@ def initialize_cameras():
         camera_frames['PI 640i'][frame_mode]['xml_file']
     ]
     
-    # Call the multi_usb_init function with the XML files
+    # Create ctypes unsigned int to store the camera handles
+    camera_handle_1 = ctypes.c_uint()
+    camera_handle_2 = ctypes.c_uint()
+
+    # Call the multi_usb_init function with the XML files and camera handles
     result = optris.multi_usb_init(xml_files[0], None, None)  # Initialize the first camera
     if result != 0:
         print(f"Failed to initialize PI 1M: {result}")
@@ -51,6 +56,7 @@ def initialize_cameras():
     print("Cameras initialized successfully.")
     return True
 
+
 def close_camera():
     try:
         optris.terminate()
@@ -62,9 +68,10 @@ def toggle_recording():
     global recording
     recording = not recording
     if recording:
-        print(f"Recording started on {active_camera}")
+        status_label.config(text=f"Recording started on {active_camera}")
     else:
         stop_recording()
+        status_label.config(text=f"Recording stopped")
 
 def stop_recording():
     global frame_buffer, times_computer
@@ -80,11 +87,11 @@ def stop_recording():
     frame_buffer = []
     times_computer = []
 
-
 def switch_frame():
     global frame_mode
     frame_mode = 'reduced' if frame_mode == 'full' else 'full'
     print(f"Switch requested to {frame_mode} frame")
+    status_label.config(text=f"Active Camera: {active_camera} ({frame_mode})")
 
 def capture_camera_frames(camera_name):
     global frame_buffer, times_computer, running, switch_requested
@@ -128,12 +135,26 @@ def capture_camera_frames(camera_name):
         close_camera()
         cv2.destroyAllWindows()
 
+threads = []  # List to keep track of threads
+
 def start_both_cameras():
+    global threads
+    threads = []  # Reset threads list
     for camera_name in ['PI 1M', 'PI 640i']:
         thread = threading.Thread(target=capture_camera_frames, args=(camera_name,))
+        threads.append(thread)  # Add thread to the list
         thread.start()
 
+def on_closing(window):
+    global running
+    running = False
+    for thread in threads:
+        thread.join()  # Wait for threads to finish
+    window.quit()
+    window.destroy()
+
 def create_gui():
+    global status_label
     window = tk.Tk()
     window.title("Thermal Camera Control")
     window.geometry("400x250")
@@ -144,17 +165,14 @@ def create_gui():
     switch_frame_button = tk.Button(window, text="Switch Full/Reduced Frame", command=switch_frame)
     switch_frame_button.pack(pady=10)
 
+    status_label = tk.Label(window, text=f"Active Camera: {active_camera} ({frame_mode})")
+    status_label.pack(pady=10)
+
     quit_button = tk.Button(window, text="Quit", command=lambda: on_closing(window))
     quit_button.pack(pady=10)
 
     window.protocol("WM_DELETE_WINDOW", lambda: on_closing(window))
     window.mainloop() 
-
-def on_closing(window):
-    global running
-    running = False  # Stop live view
-    window.quit()
-    window.destroy()
 
 if __name__ == "__main__":
     if not initialize_cameras():  # Call it here without arguments

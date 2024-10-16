@@ -12,7 +12,6 @@ frame_buffer_1m = []
 frame_buffer_640i = []
 times_computer_1m = []
 times_computer_640i = []
-active_camera = 'PI 1M'
 running = True
 frame_mode = 'full'  # for initialization
 
@@ -164,7 +163,7 @@ def create_gui():
 
     window = tk.Tk()
     window.title("Thermal Camera Control")
-    window.geometry("800x600")  # Adjusted for better layout
+    window.geometry("1500x600")  # Adjusted for better layout
 
     # Frame for camera display
     frame_display = tk.Frame(window)

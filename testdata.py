@@ -63,7 +63,7 @@ def create_gui():
 
     window = tk.Tk()
     window.title("Thermal Camera Control")
-    window.geometry("800x600")  # Adjusted for better layout
+    window.geometry("1500x700")  # Adjusted for better layout
 
     # Frame for camera display
     frame_display = tk.Frame(window)

@@ -2,7 +2,7 @@ import ctypes
 import sys
 from enum import Enum
 from typing import Optional, Tuple
-
+import ctypes
 import numpy as np
 
 DEFAULT_WIN_PATH = "pyOptris\\x64\\libirimager.dll"
@@ -27,17 +27,18 @@ def usb_init(
         None if log_file is None else log_file.encode(),
     )
 
-
 #multi cameras init
 def multi_usb_init(
     xml_config: str, formats_def: Optional[str] = None, log_file: Optional[str] = None
-) -> int:
-    return lib.evo_irimager_multi_usb_init(
-        ctypes.byref(ctypes.c_uint()), 
+) -> Tuple[int, int]:  # Return both camera ID and error code
+    camera_id = ctypes.c_uint()  # Create an unsigned integer to hold the camera ID
+    error_code = lib.evo_irimager_multi_usb_init(
+        ctypes.byref(camera_id),  # Pass the address of camera_id
         xml_config.encode(),
         None if formats_def is None else formats_def.encode(),
         None if log_file is None else log_file.encode(),
     )
+    return camera_id.value, error_code  # Return both the camera ID and error code
 
 #
 # @brief Initializes the TCP connection to the daemon process (non-blocking)
@@ -94,6 +95,20 @@ def get_palette_image_size() -> Tuple[int, int]:
     )
     return width.value, height.value
 
+#trying 
+def get_palette_image_dimensions() -> Tuple[int, int]:
+    width = ctypes.c_int()
+    height = ctypes.c_int()
+
+    retVal = lib.evo_irimager_get_palette_image_size(
+        ctypes.byref(width), ctypes.byref(height)
+    )
+
+    if retVal != 0:  # Check if there was an error
+        print(f"Error getting palette image dimensions: {retVal}")
+        return -1, -1  # Indicate failure with invalid dimensions
+
+    return width.value, height.value  # Return the actual dimensions
 
 #
 # @brief Accessor to thermal image by reference
@@ -130,6 +145,24 @@ def get_palette_image(width: int, height: int) -> np.ndarray:
     h = ctypes.byref(ctypes.c_int(height))
     paletteData = np.empty((height, width, 3), dtype=np.uint8)
     paletteDataPointer = paletteData.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
+    retVal = -1
+    while retVal != 0:
+        retVal = lib.evo_irimager_get_palette_image(w, h, paletteDataPointer)
+    return paletteData
+
+#trying a new fuction
+def get_palette_image_safe(width: int, height: int) -> np.ndarray:
+    # Validate dimensions
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid dimensions: width={width}, height={height}")
+
+    w = ctypes.byref(ctypes.c_int(width))
+    h = ctypes.byref(ctypes.c_int(height))
+
+    # Initialize the palette data array
+    paletteData = np.empty((height, width, 3), dtype=np.uint8)
+    paletteDataPointer = paletteData.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
+
     retVal = -1
     while retVal != 0:
         retVal = lib.evo_irimager_get_palette_image(w, h, paletteDataPointer)
