@@ -42,7 +42,7 @@ def write_counter(value):
         file.write(str(value))
 
 # Initialize the camera with retries
-if not initialize_camera('17092037f.xml'):
+if not initialize_camera('6060300.xml'):
     print("Failed to initialize the camera after multiple attempts.")
     exit(1)
 

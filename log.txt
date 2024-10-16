@@ -1,1 +1,2 @@
-another_camera_file.xml
+6060300f.xml
+1

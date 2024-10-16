@@ -13,18 +13,27 @@ times_computer = []
 running = True  # Control the live view loop
 current_camera = None
 camera_config = {
-    "PI 1M": "17092037f.xml",
-    "PI 640i": "6060300.xml" 
+    "PI 1M": {
+        "xml_file": "17092037.xml",
+        "default_w": 640,
+        "default_h": 480
+    },
+    "PI 640i": {
+        "xml_file": "6060300.xml",
+        "default_w": 640,
+        "default_h": 120
+    }
 }
 
 # Initialize the camera
 def initialize_camera(camera_name, retries=3, delay=2):
     global current_camera
-    serial_file = camera_config.get(camera_name)
-    if not serial_file:
+    config = camera_config.get(camera_name)
+    if not config:
         print(f"Camera configuration for {camera_name} not found.")
         return False
     
+    serial_file = config["xml_file"]
     for attempt in range(retries):
         try:
             optris.usb_init(serial_file)
@@ -79,11 +88,13 @@ def switch_camera(camera_name):
     if current_camera == camera_name:
         print(f"Already using {camera_name}")
         return
+
     if initialize_camera(camera_name):
+        config = camera_config[camera_name]
         w, h = get_image_size()
         if w == -1 or h == -1:
-            print(f"Failed to get image size for {camera_name}.")
-            return
+            print(f"Failed to get image size for {camera_name}. Using default dimensions.")
+            w, h = config["default_w"], config["default_h"]
         print(f"Switched to {camera_name}")
 
 # GUI
@@ -113,7 +124,7 @@ def on_closing(window):
 # Function to continuously capture and display frames
 def live_view():
     scale_factor = 8  # change to get a bigger screen
-    global recording, frame_buffer, times_computer, running, current_camera
+    global recording, frame_buffer, times_computer, running, current_camera, w, h
 
     while running:
         try:

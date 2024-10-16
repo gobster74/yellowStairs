@@ -2,6 +2,16 @@ import numpy as np
 import cv2
 import pyOptris as optris
 import time
+import threading
+import tkinter as tk
+
+# Global variables
+recording = False
+frame_buffer = []
+times_computer = []
+full_frame = True  # Switch between full and reduced frame
+running = True
+scale_factor = 6
 
 # Initialize the camera
 def initialize_camera(serial_file, retries=3, delay=2):
@@ -27,7 +37,7 @@ def get_image_size():
         return -1, -1
 
 # Initialize the camera with retries
-if not initialize_camera('17092037f.xml'):
+if not initialize_camera('17092037.xml'):
     print("Failed to initialize the camera after multiple attempts.")
     exit(1)
 
@@ -38,35 +48,66 @@ if w == -1 or h == -1:
     optris.terminate()
     exit(1)
 
-# Create a window for the live thermal feed
-cv2.namedWindow('Thermal Live View', cv2.WINDOW_NORMAL)
+# Start or stop recording
+def toggle_recording():
+    global recording
+    recording = not recording
+    if recording:
+        print("Recording started")
+    else:
+        stop_recording()
 
-def live_view(scale_factor=3):
-    while True:
+# Stop recording and save the frame buffer
+def stop_recording():
+    global frame_buffer, times_computer
+    if frame_buffer:
+        np.save(f'frame_buffer_{int(time.time())}.npy', np.array(frame_buffer))
+        np.save(f'times_computer_{int(time.time())}.npy', np.array(times_computer))
+        print("Recording stopped and files saved")
+    else:
+        print("No data to save")
+    frame_buffer = []
+    times_computer = []
+
+# Switch between full and reduced frame
+def toggle_frame_size():
+    global full_frame
+    full_frame = not full_frame
+    if full_frame:
+        print("Switched to full frame")
+    else:
+        print("Switched to reduced frame")
+
+# Function to display live thermal view
+def live_view(scale_factor=6):
+    global frame_buffer, times_computer, running
+
+    while running:
         try:
             # Capture the thermal image
-            thermal_image = optris.get_thermal_image(w, h)[0]
+            if full_frame:
+                thermal_image = optris.get_thermal_image(w, h)[0]
+            else:
+                thermal_image = optris.get_thermal_image(w//2, h//2)[0]  # Reduced frame
 
-            # Get the min and max values for dynamic scaling
+            # Normalize the image
             min_temp = np.min(thermal_image)
             max_temp = np.max(thermal_image)
-
-            # If min and max are too close, adjust manually to avoid flat images
-            if max_temp - min_temp < 1e-5:
-                min_temp = min_temp - 1
-                max_temp = max_temp + 1
-
-            # Normalize the image based on the dynamic min and max values
             normalized_image = np.uint8(255 * (thermal_image - min_temp) / (max_temp - min_temp))
 
-            # Apply a colormap to the normalized image
+            # Apply a colormap
             color_image = cv2.applyColorMap(normalized_image, cv2.COLORMAP_JET)
 
-            # Resize the image for better visualization
+            # Resize the image
             resized_image = cv2.resize(color_image, (w * scale_factor, h * scale_factor), interpolation=cv2.INTER_LINEAR)
 
             # Display the live frame
             cv2.imshow('Thermal Live View', resized_image)
+
+            # Record frames if recording is active
+            if recording:
+                frame_buffer.append(thermal_image)
+                times_computer.append(time.time())
 
             # Press 'q' to quit the live view
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -75,9 +116,47 @@ def live_view(scale_factor=3):
             print(f"Error capturing frame: {e}")
             break
 
-    # Release the camera and close windows
+    # Clean up when done
+    if recording:
+        stop_recording()
     optris.terminate()
     cv2.destroyAllWindows()
 
-# Run the live view
-live_view()
+# Create the GUI for buttons
+def create_gui():
+    window = tk.Tk()
+    window.title("Thermal Camera Control")
+    window.geometry("400x150")
+
+    # Start/Stop recording button
+    record_button = tk.Button(window, text="Start/Stop Recording", command=toggle_recording)
+    record_button.pack(pady=20)
+
+    # Full/Reduced frame switch button
+    frame_button = tk.Button(window, text="Switch Full/Reduced Frame", command=toggle_frame_size)
+    frame_button.pack(pady=20)
+
+    # Quit button
+    quit_button = tk.Button(window, text="Quit", command=lambda: on_closing(window))
+    quit_button.pack(pady=20)
+
+    window.protocol("WM_DELETE_WINDOW", lambda: on_closing(window))
+    window.mainloop()
+
+# Graceful closing of the app
+def on_closing(window):
+    global running
+    running = False  # Stop live view
+    window.quit()
+    window.destroy()
+
+# Run live view in a separate thread
+def run_live_view():
+    live_view(scale_factor=3)
+
+# Start GUI in a separate thread
+gui_thread = threading.Thread(target=create_gui)
+gui_thread.start()
+
+# Start live view in the main thread
+run_live_view()

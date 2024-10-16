@@ -4,7 +4,7 @@ import pyOptris as optris
 
 
 # USB connection initialisation 
-optris.usb_init("17092037.xml")
+optris.usb_init("6060300f.xml")
 
 # optris.set_palette(9)
 

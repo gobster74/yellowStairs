@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # USB connection initialization
 try:
-    optris.usb_init('17092037f.xml')
+    optris.usb_init('6060300.xml')
 except Exception as e:
     print(f"Error initializing camera: {e}")
     exit(1)

@@ -1,139 +1,125 @@
-import threading
-import pyOptris as optris
-import time
 import numpy as np
 import cv2
+import pyOptris as optris
+import time
+import threading
 import tkinter as tk
-from tkinter import messagebox
+from PIL import Image, ImageTk
 
 # Global variables
 recording = False
-frame_buffer = []
-times_computer = []
-running = True  # Control the live view loop
+frame_buffer_1m = []
+frame_buffer_640i = []
+times_computer_1m = []
+times_computer_640i = []
+running = True
 
-# Retry initialization function
-def initialize_camera(serial_file, retries=3, delay=2):
-    for attempt in range(retries):
-        try:
-            optris.usb_init(serial_file)
-            print("Camera initialized successfully")
-            return True
-        except Exception as e:
-            print(f"Initialization attempt {attempt+1}/{retries} failed: {e}")
-            time.sleep(delay)
-    return False
+# Initialize cameras
+def initialize_cameras():
+    xml_files = ["17092037.xml", "6060300.xml"]
+    print("Initializing cameras...")
+    # Initialize both cameras
+    result = optris.multi_usb_init(xml_files[0], xml_files[1], None)
+    if result != 0:
+        print("Failed to initialize cameras.")
+        return False
+    print("Cameras initialized successfully.")
+    return True
 
-# Retry getting image size
-def get_image_size():
-    try:
-        w, h = optris.get_thermal_image_size()
-        if w <= 0 or h <= 0:
-            raise ValueError("Invalid image dimensions returned.")
-        return w, h
-    except Exception as e:
-        print(f"Failed to get image size: {e}")
-        return -1, -1
-
-# Initialize the camera with retries
-if not initialize_camera('17092037f.xml'):
-    print("Failed to initialize the camera after multiple attempts.")
-    exit(1)
-
-# Get image size and check for valid dimensions
-w, h = get_image_size()
-if w == -1 or h == -1:
-    print("Camera stream failed to start. Exiting.")
+def close_camera():
     optris.terminate()
-    exit(1)
+    print("Cameras terminated successfully.")
 
-#  start/stop recording
-def toggle_recording():
-    global recording
-    recording = not recording
-    if recording:
-        start_recording()
-    else:
-        stop_recording()
+def process_pi_1m():
+    global frame_buffer_1m, times_computer_1m, running
 
-# start recording
-def start_recording():
-    global frame_buffer, times_computer
-    frame_buffer = []
-    times_computer = []
-    print("Recording started")
+    try:
+        w, h = 72, 56  # Adjust according to the PI 1M specs
 
-# stop recording and save data
-def stop_recording():
-    global frame_buffer, times_computer
-    if frame_buffer:
-        np.save(f'frame_buffer_{int(time.time())}.npy', np.array(frame_buffer))
-        np.save(f'times_computer_{int(time.time())}.npy', np.array(times_computer))
-        print("Recording stopped and files saved")
-    else:
-        print("No data to save")
+        while running:
+            thermal_image = optris.get_thermal_image(w, h)[0]
+            normalized_image = cv2.normalize(thermal_image, None, 0, 255, cv2.NORM_MINMAX)
+            color_image = cv2.applyColorMap(np.uint8(normalized_image), cv2.COLORMAP_JET)
+            cv2.putText(color_image, "Camera: PI 1M", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-# GUI
+            # Convert to a format suitable for Tkinter
+            img = Image.fromarray(color_image)
+            imgtk = ImageTk.PhotoImage(image=img)
+
+            # Update the Tkinter label with the new image
+            label_img_1m.imgtk = imgtk
+            label_img_1m.configure(image=imgtk)
+
+            if recording:
+                frame_buffer_1m.append(thermal_image)
+                times_computer_1m.append(time.time())
+
+            time.sleep(0.1)
+
+    except Exception as e:
+        print(f"Error capturing frame from PI 1M: {e}")
+
+def process_pi_640i():
+    global frame_buffer_640i, times_computer_640i, running
+
+    try:
+        w, h = 764, 480  # Adjust according to the PI 640i specs
+
+        while running:
+            thermal_image = optris.get_thermal_image(w, h)[0]
+            normalized_image = cv2.normalize(thermal_image, None, 0, 255, cv2.NORM_MINMAX)
+            color_image = cv2.applyColorMap(np.uint8(normalized_image), cv2.COLORMAP_JET)
+            cv2.putText(color_image, "Camera: PI 640i", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            # Convert to a format suitable for Tkinter
+            img = Image.fromarray(color_image)
+            imgtk = ImageTk.PhotoImage(image=img)
+
+            # Update the Tkinter label with the new image
+            label_img_640i.imgtk = imgtk
+            label_img_640i.configure(image=imgtk)
+
+            if recording:
+                frame_buffer_640i.append(thermal_image)
+                times_computer_640i.append(time.time())
+
+            time.sleep(0.1)
+
+    except Exception as e:
+        print(f"Error capturing frame from PI 640i: {e}")
+
+def start_cameras():
+    threading.Thread(target=process_pi_1m, daemon=True).start()
+    threading.Thread(target=process_pi_640i, daemon=True).start()
+
 def create_gui():
+    global label_img_1m, label_img_640i
+
     window = tk.Tk()
     window.title("Thermal Camera Control")
-    window.geometry("300x100")
-    
-    start_button = tk.Button(window, text="Start/Stop Recording", command=toggle_recording)
-    start_button.pack(pady=20)
-    
-    window.protocol("WM_DELETE_WINDOW", lambda: on_closing(window))
+    window.geometry("800x600")  # Adjusted for better layout
+
+    # Frame for camera display
+    frame_display = tk.Frame(window)
+    frame_display.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    # Label to display camera output for PI 1M
+    label_img_1m = tk.Label(frame_display)
+    label_img_1m.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    # Label to display camera output for PI 640i
+    label_img_640i = tk.Label(frame_display)
+    label_img_640i.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    quit_button = tk.Button(window, text="Quit", command=window.quit)
+    quit_button.pack(side=tk.BOTTOM, padx=5, pady=5)
+
+    window.protocol("WM_DELETE_WINDOW", lambda: close_camera() or window.quit())
     window.mainloop()
 
-# window closing
-def on_closing(window):
-    global running
-    if recording:
-        stop_recording()
-    running = False  # Stop the live view loop
-    optris.terminate()
-    cv2.destroyAllWindows()
-    window.quit()
-    window.destroy()
-
-# Function to continuously capture and display frames
-def live_view():
-    scale_factor = 8  # change to get a bigger screen 
-    global recording, frame_buffer, times_computer, running
-
-    while running:
-        try:
-            # Capture the thermal image
-            thermal_image = optris.get_thermal_image(w, h)[0]
-
-            # Convert the image to an 8-bit format for OpenCV display
-            normalized_image = cv2.normalize(thermal_image, None, 0, 255, cv2.NORM_MINMAX)
-            display_image = np.uint8(normalized_image)
-
-            # Resize the image for larger display
-            resized_image = cv2.resize(display_image, (w * scale_factor, h * scale_factor), interpolation=cv2.INTER_LINEAR)
-
-            # Display the frame
-            cv2.imshow('Live Thermal View', resized_image)
-
-            # Record frames if recording is active
-            if recording:
-                frame_buffer.append(thermal_image)
-                times_computer.append(time.time())
-
-            #input to close the window
-            if cv2.waitKey(1) & 0xFF == ord('q'):  # Press 'q' to exit
-                break
-        except Exception as e:
-            print(f"Error during live view: {e}")
-            break
-
-    # Clean up
-    cv2.destroyAllWindows()
-
-# Start the GUI in a separate thread
-gui_thread = threading.Thread(target=create_gui)
-gui_thread.start()
-
-# Start the live view
-live_view()
+if __name__ == "__main__":
+    if not initialize_cameras():
+        print("Camera initialization failed. Exiting...")
+    else:
+        start_cameras()
+        create_gui()  # Start the GUI

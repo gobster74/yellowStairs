@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <imager xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <serial>6060300</serial>                     <!-- Provide serial number, if you attach more than one camera -->
+  <serial>20052193</serial>                     <!-- Provide serial number, if you attach more than one camera -->
   <videoformatindex>1</videoformatindex> <!-- index of the used video format resolution and framerate (USB enpoint): http://documentation.evocortex.com/libirimager2/html/index.html#sec_videoformat -->
   <formatspath>.\</formatspath>
   <!-- <calipath></calipath> -->

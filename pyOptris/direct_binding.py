@@ -28,6 +28,17 @@ def usb_init(
     )
 
 
+#multi cameras init
+def multi_usb_init(
+    xml_config: str, formats_def: Optional[str] = None, log_file: Optional[str] = None
+) -> int:
+    return lib.evo_irimager_multi_usb_init(
+        ctypes.byref(ctypes.c_uint()), 
+        xml_config.encode(),
+        None if formats_def is None else formats_def.encode(),
+        None if log_file is None else log_file.encode(),
+    )
+
 #
 # @brief Initializes the TCP connection to the daemon process (non-blocking)
 # @param[in] IP address of the machine where the daemon process is running ("localhost" can be resolved)
