@@ -30,15 +30,17 @@ def usb_init(
 #multi cameras init
 def multi_usb_init(
     xml_config: str, formats_def: Optional[str] = None, log_file: Optional[str] = None
-) -> Tuple[int, int]:  # Return both camera ID and error code
-    camera_id = ctypes.c_uint()  # Create an unsigned integer to hold the camera ID
-    error_code = lib.evo_irimager_multi_usb_init(
-        ctypes.byref(camera_id),  # Pass the address of camera_id
+) -> int:
+    id_var = ctypes.c_uint()
+    err = lib.evo_irimager_multi_usb_init(
+        ctypes.byref(id_var), 
         xml_config.encode(),
         None if formats_def is None else formats_def.encode(),
         None if log_file is None else log_file.encode(),
     )
-    return camera_id.value, error_code  # Return both the camera ID and error code
+    print(id_var)
+    return err, id_var
+
 
 #
 # @brief Initializes the TCP connection to the daemon process (non-blocking)
@@ -129,8 +131,19 @@ def get_thermal_image(width: int, height: int):
     err = lib.evo_irimager_get_thermal_image(w, h, thermalDataPointer)
     return thermalData, err
 
-
+def get_multi_thermal_image(id:int,width: int, height: int):
+    w = ctypes.byref(ctypes.c_int(width))
+    h = ctypes.byref(ctypes.c_int(height))
+    thermalData = np.empty((height, width), dtype=np.uint16)
+    thermalDataPointer = thermalData.ctypes.data_as(ctypes.POINTER(ctypes.c_ushort))
+    err = lib.evo_irimager_multi_get_thermal_image(id,w, h, thermalDataPointer)
+    return thermalData, err
 #
+def get_multi_get_serial(id:int):
+    serial = ctypes.byref(ctypes.c_ulong())
+    err = lib.evo_irimager_multi_get_serial(id,serial)
+    return err, serial
+
 # @brief Accessor to an RGB palette image by reference
 # data format: unsigned char array (size 3 * w * h) r,g,b
 # @param[in] w image width

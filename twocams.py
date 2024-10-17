@@ -5,7 +5,7 @@ import time
 import threading
 import tkinter as tk
 from PIL import Image, ImageTk
-
+import ctypes
 # Global variables
 recording = False
 frame_buffer_1m = []
@@ -37,19 +37,22 @@ def initialize_cameras():
     ]
 
     # Initialize PI 1M
-    result = optris.multi_usb_init(xml_files[0], None, None)
-    if result != 0:
-        print(f"Failed to initialize PI 1M: {result}")
+    err,ID1 = optris.multi_usb_init(xml_files[0],None, 'log_name')
+    if err != 0:
+        print(f"Failed to initialize PI 1M: {err}")
         return False
-
+    print(ID1)
+    print(optris.get_multi_get_serial(ID1))
     # Initialize PI 640i
-    result = optris.multi_usb_init(xml_files[1], None, None)
-    if result != 0:
-        print(f"Failed to initialize PI 640i: {result}")
+    err,ID2 = optris.multi_usb_init(xml_files[1],None,'log_name')
+    if err != 0:
+        print(f"Failed to initialize PI 640i: {err}")
         return False
+    print(ID2)
+    print(optris.get_multi_get_serial(ID2))
 
     print("Cameras initialized successfully.")
-    return True
+    return True,ID1,ID2
 
 def close_camera():
     try:
@@ -94,14 +97,14 @@ def switch_frame():
     frame_mode = 'reduced' if frame_mode == 'full' else 'full'
     print(f"Switch requested to {frame_mode} frame")
 
-def process_pi_1m():
+def process_pi_1m(ID):
     global frame_buffer_1m, times_computer_1m, running
 
     try:
         w, h = 764, 480  # PI 1M resolution
 
         while running:
-            thermal_image = optris.get_thermal_image(w, h)[0]
+            thermal_image = optris.get_multi_thermal_image(ID,w, h)[0]
             normalized_image = cv2.normalize(thermal_image, None, 0, 255, cv2.NORM_MINMAX)
             color_image = cv2.applyColorMap(np.uint8(normalized_image), cv2.COLORMAP_JET)
             cv2.putText(color_image, f"Camera: PI 1M ({frame_mode} frame)", (10, 30),
@@ -124,14 +127,14 @@ def process_pi_1m():
     except Exception as e:
         print(f"Error capturing frame from PI 1M: {e}")
 
-def process_pi_640i():
+def process_pi_640i(ID):
     global frame_buffer_640i, times_computer_640i, running
 
     try:
         w, h = 642, 480  # PI 640i resolution
 
         while running:
-            thermal_image = optris.get_thermal_image(w, h)[0]
+            thermal_image = optris.get_multi_thermal_image(ID,w, h)[0]
             normalized_image = cv2.normalize(thermal_image, None, 0, 255, cv2.NORM_MINMAX)
             color_image = cv2.applyColorMap(np.uint8(normalized_image), cv2.COLORMAP_JET)
             cv2.putText(color_image, f"Camera: PI 640i ({frame_mode} frame)", (10, 30),
@@ -154,9 +157,9 @@ def process_pi_640i():
     except Exception as e:
         print(f"Error capturing frame from PI 640i: {e}")
 
-def start_cameras():
-    threading.Thread(target=process_pi_1m, daemon=True).start()
-    threading.Thread(target=process_pi_640i, daemon=True).start()
+def start_cameras(ID1,ID2):
+    threading.Thread(target=process_pi_1m, daemon=True,args=(ID1,)).start()
+    threading.Thread(target=process_pi_640i, daemon=True,args=(ID2,)).start()
 
 def create_gui():
     global label_img_1m, label_img_640i
@@ -207,9 +210,10 @@ def on_closing(window):
 
 if __name__ == "__main__":
     # Initialize both cameras using multi_usb_init
-    if not initialize_cameras():
+    err,ID1,ID2 = initialize_cameras()
+    if not err:
         print("Camera initialization failed. Exiting...")
     else:
         # Start capturing frames from both cameras in separate threads
-        start_cameras()
+        start_cameras(ID1,ID2)
         create_gui()  # Start the GUI
