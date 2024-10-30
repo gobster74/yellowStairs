@@ -1,109 +1,132 @@
-import threading
+import numpy as np
+import cv2
 import pyOptris as optris
 import time
-import numpy as np
-import os
+import threading
+import tkinter as tk
+from PIL import Image, ImageTk
 
-# Constants
-COUNTER_FILE = 'counter.txt'
+# Global variables
+recording = False
+frame_buffer_1m = []
+frame_buffer_640i = []
+times_computer_1m = []
+times_computer_640i = []
+running = True
+frame_mode = 'full'  # For initializationa
 
-# Retry initialization function
-def initialize_camera(serial_file, retries=3, delay=2):
-    for attempt in range(retries):
-        try:
-            optris.usb_init(serial_file)
-            print("Camera initialized successfully")
-            return True
-        except Exception as e:
-            print(f"Initialization attempt {attempt+1}/{retries} failed: {e}")
-            time.sleep(delay)
-    return False
+camera_frames = {
+    'PI 1M': {
+        'full': '17092037f.xml',
+        'reduced': '17092037.xml'
+    },
+    'PI 640i': {
+        'full': '6060300f.xml',
+        'reduced': '6060300.xml'
+    }
+}
 
-# Retry getting image size
-def get_image_size():
-    try:
-        w, h = optris.get_thermal_image_size()
-        if w <= 0 or h <= 0:
-            raise ValueError("Invalid image dimensions returned.")
-        return w, h
-    except Exception as e:
-        print(f"Failed to get image size: {e}")
-        return -1, -1
+def initialize_cameras():
+    print("Initializing cameras...")
 
-# Counter management functions
-def read_counter():
-    if os.path.exists(COUNTER_FILE):
-        with open(COUNTER_FILE, 'r') as file:
-            return int(file.read().strip())
-    return 1  # Default to 1 if the file does not exist
+    # Load XML file paths based on frame mode
+    xml_files = [
+        camera_frames['PI 1M'][frame_mode],
+        camera_frames['PI 640i'][frame_mode]
+    ]
 
-def write_counter(value):
-    with open(COUNTER_FILE, 'w') as file:
-        file.write(str(value))
+    # Initialize PI 1M
+    err,ID1 = optris.multi_usb_init(xml_files[0],None, 'log_name')
+    if err != 0:
+        print(f"Failed to initialize PI 1M: {err}")
+        return False
+    print(ID1)
+    print(optris.get_multi_get_serial(ID1))
+    # Initialize PI 640i
+    err,ID2 = optris.multi_usb_init(xml_files[1],None,'log_name')
+    if err != 0:
+        print(f"Failed to initialize PI 640i: {err}")
+        return False
+    print(ID2)
+    print(optris.get_multi_get_serial(ID2))
 
-# Initialize the camera with retries
-if not initialize_camera('6060300.xml'):
-    print("Failed to initialize the camera after multiple attempts.")
-    exit(1)
+    print("Cameras initialized successfully.")
+    return True,ID1,ID2
 
-# Get image size and check for valid dimensions
-w, h = get_image_size()
-if w == -1 or h == -1:
-    print("Camera stream failed to start. Exiting.")
+
+def close_camera():
     optris.terminate()
-    exit(1)
+    print("Cameras terminated successfully.")
 
-# Proceed with allocating buffer if valid image size is retrieved
-frames_captured = 5000
-frame_buffer = np.empty((frames_captured, h, w), dtype=np.float32)
-times_computer = np.empty(frames_captured)
+def process_pi_1m(ID):
+    global running
+    # Call the function to get the image size
+    w, h, err = optris.get_multi_palette_image_size(ID)  
+    if w == -1 or h == -1:
+        print(f"Error getting image size for PI 1M: {err}")
+        return
 
-# Initialize counter
-counter = read_counter()
+    while running:
+        frame = optris.get_multi_palette_image(ID, w, h)[0]  # Get the RGB image
+        # Update GUI
+        img = Image.fromarray(frame)
+        imgtk = ImageTk.PhotoImage(image=img)
+        label_img_1m.imgtk = imgtk
+        label_img_1m.configure(image=imgtk)
+        time.sleep(0.1)
 
-# Capture frames function
-def capture_frames():
-    start_time = time.time()
-    for ii in range(frames_captured):
-        try:
-            thermal_image = optris.get_thermal_image(w, h)[0]
-            frame_buffer[ii] = thermal_image
-            times_computer[ii] = time.time()
-            
-            # Print frame statistics for debugging
-            if ii % 100 == 0:  # Print every 100 frames
-                print(f"Frame {ii}: min={np.min(thermal_image)}, max={np.max(thermal_image)}, mean={np.mean(thermal_image)}")
-        
-        except Exception as e:
-            print(f"Error capturing frame {ii}: {e}")
-            break
-    
-    end_time = time.time()
-    print(f"Capture complete. Recording Time: {end_time - start_time:.2f} s")
-    save_data()
+def process_pi_640i(ID):
+    global running
+    # Call the function to get the image size
+    w, h, err = optris.get_multi_palette_image_size(ID)  
+    if w == -1 or h == -1:
+        print(f"Error getting image size for PI 640i: {err}")
+        return
 
-# Save the buffer data to files
-def save_data():
-    global counter
-    np.save(f'frame_buffer_{counter}.npy', frame_buffer)
-    np.save(f'times_computer_{counter}.npy', times_computer)
-    print(f"Buffers saved to files with counter {counter}.")
-    counter += 1
-    write_counter(counter)
+    while running:
+        frame = optris.get_multi_palette_image(ID, w, h)[0]  # Get the RGB image
+        # Update GUI
+        img = Image.fromarray(frame)
+        imgtk = ImageTk.PhotoImage(image=img)
+        label_img_640i.imgtk = imgtk
+        label_img_640i.configure(image=imgtk)
+        time.sleep(0.1)
 
-# Start capture thread
-start_time = time.time()
-capture_thread = threading.Thread(target=capture_frames)
-capture_thread.start()
+def start_cameras(ID1,ID2):
+    threading.Thread(target=process_pi_1m, daemon=True,args=(ID1,)).start()
+    threading.Thread(target=process_pi_640i, daemon=True,args=(ID2,)).start()
 
-# Wait for thread to finish
-capture_thread.join()
+def create_gui():
+    global label_img_1m, label_img_640i
 
-end_time = time.time()
-recording_time = end_time - start_time
-print(f"Total Recording Time: {recording_time:.2f} s")
-optris.terminate()
+    window = tk.Tk()
+    window.title("Thermal Camera Control")
+    window.geometry("1500x700")  # Adjusted for better layout
 
-# Mean frame time and frequency
-print(f"Mean Time per frame: {recording_time / frames_captured:.4f} s")
-print(f"Mean Frequency per frame: {frames_captured / recording_time:.2f} Hz")
+    # Frame for camera display
+    frame_display = tk.Frame(window)
+    frame_display.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    # Label to display camera output for PI 1M
+    label_img_1m = tk.Label(frame_display)
+    label_img_1m.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    # Label to display camera output for PI 640i
+    label_img_640i = tk.Label(frame_display)
+    label_img_640i.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    quit_button = tk.Button(window, text="Quit", command=window.quit)
+    quit_button.pack(side=tk.BOTTOM, padx=5, pady=5)
+
+    window.protocol("WM_DELETE_WINDOW", lambda: close_camera() or window.quit())
+    window.mainloop()
+
+if __name__ == "__main__":
+    # Initialize both cameras using multi_usb_init
+    err,ID1,ID2 = initialize_cameras()
+    if not err:
+        print("Camera initialization failed. Exiting...")
+    else:
+        # Start capturing frames from both cameras in separate threads
+        start_cameras(ID1,ID2)
+        create_gui()  # Start the GUI

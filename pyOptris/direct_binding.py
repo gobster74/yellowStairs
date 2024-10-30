@@ -97,22 +97,19 @@ def get_palette_image_size() -> Tuple[int, int]:
     )
     return width.value, height.value
 
-#trying 
-def get_palette_image_dimensions() -> Tuple[int, int]:
+def get_multi_palette_image_size(id: int) -> Tuple[int, int, int]:
+
     width = ctypes.c_int()
     height = ctypes.c_int()
 
-    retVal = lib.evo_irimager_get_palette_image_size(
-        ctypes.byref(width), ctypes.byref(height)
-    )
+    # Calling function with ID and pointers to width and height
+    err = lib.evo_irimager_multi_get_palette_image_size(ctypes.c_long(id), ctypes.byref(width), ctypes.byref(height))
+    if err != 0:  
+        print(f"Error getting multi palette image size for camera ID {id}: {err}")
+        return -1, -1, err  
 
-    if retVal != 0:  # Check if there was an error
-        print(f"Error getting palette image dimensions: {retVal}")
-        return -1, -1  # Indicate failure with invalid dimensions
+    return width.value, height.value, err
 
-    return width.value, height.value  # Return the actual dimensions
-
-#
 # @brief Accessor to thermal image by reference
 # Conversion to temperature values are to be performed as follows:
 # t = ((double)data[x] - 1000.0) / 10.0;
@@ -190,22 +187,23 @@ def get_palette_image(width: int, height: int) -> np.ndarray:
         retVal = lib.evo_irimager_get_palette_image(w, h, paletteDataPointer)
     return paletteData
 
-#trying a new fuction
-def get_palette_image_safe(width: int, height: int) -> np.ndarray:
-    # Validate dimensions
-    if width <= 0 or height <= 0:
-        raise ValueError(f"Invalid dimensions: width={width}, height={height}")
 
+
+
+def get_multi_palette_image(id: int, width: int, height: int) -> np.ndarray:
     w = ctypes.byref(ctypes.c_int(width))
     h = ctypes.byref(ctypes.c_int(height))
 
-    # Initialize the palette data array
-    paletteData = np.empty((height, width, 3), dtype=np.uint8)
+    # allocates memory for the palette data
+    paletteData = np.empty((height, width, 3), dtype=np.uint8)  # 3 for RGB
     paletteDataPointer = paletteData.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
 
-    retVal = -1
-    while retVal != 0:
-        retVal = lib.evo_irimager_get_palette_image(w, h, paletteDataPointer)
+    # calling function multi-camera palette image
+    retVal = lib.evo_irimager_multi_get_palette_image(id, w, h, paletteDataPointer)
+
+    if retVal != 0:
+        raise RuntimeError(f"Error getting multi palette image for ID {id}: {retVal}")
+
     return paletteData
 
 
@@ -236,6 +234,14 @@ def get_thermal_palette_image(
         t_w, t_h, thermalDataPointer, p_w, p_h, paletteDataPointer
     )
     return #(thermalData, paletteData)
+
+def get_multi_thermal_palette_image(id:int, width: int, height: int):
+    w = ctypes.byref(ctypes.c_int(width))
+    h = ctypes.byref(ctypes.c_int(height))
+    thermalData = np.empty((height, width), dtype=np.uint16)
+    thermalDataPointer = thermalData.ctypes.data_as(ctypes.POINTER(ctypes.c_ushort))
+    err = lib.evo_irimager_multi_get_thermal_pallet_image(id,w, h, thermalDataPointer)
+    return thermalData, err
 
 
 #
@@ -313,8 +319,8 @@ class ShutterMode(Enum):
 class EvoIRFrameMetadata(ctypes.Structure):
     _fields_ = [
         ("timestamp", ctypes.c_double),
-        ("temperature_min", ctypes.c_double)
-        ("temperature_max", ctypes.c_double), #checking these for now
+        ("temperature_min", ctypes.c_double),
+        ("temperature_max", ctypes.c_double),  # Checking these for now
     ]
 
 def set_shutter_mode(shutterMode: ShutterMode) -> int:
@@ -419,3 +425,19 @@ def daemon_is_running() -> int:
 #
 def daemon_kill() -> int:
     return lib.evo_irimager_daemon_kill(None)
+
+#signatures 
+
+lib.evo_irimager_multi_get_palette_image_size.argtypes = [
+    ctypes.c_uint,   # Camera ID
+    ctypes.POINTER(ctypes.c_int),  # Pointer to width
+    ctypes.POINTER(ctypes.c_int)   # Pointer to height
+]
+lib.evo_irimager_multi_get_palette_image_size.restype = ctypes.c_int
+
+lib.evo_irimager_multi_get_palette_image.argtypes = [
+    ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_ubyte)
+]
+lib.evo_irimager_multi_get_palette_image.restype = ctypes.c_int
