@@ -144,6 +144,33 @@ def get_multi_get_serial(id:int):
     err = lib.evo_irimager_multi_get_serial(id,serial)
     return err, serial
 
+def get_multi_get_thermal_image_metadata(id:int, width:int, height:int):
+    w = ctypes.byref(ctypes.c_int(width))
+    h = ctypes.byref(ctypes.c_int(height))
+    # memory thermal data
+    thermalData = np.empty((height, width), dtype=np.uint16)
+    thermalDataPointer = thermalData.ctypes.data_as((ctypes.POINTER(ctypes.c_ushort)))
+    # memory metadata as raw bytes
+    metadata_size = ctypes.sizeof(ctypes.c_double) * 5
+    metadata_buffer = ctypes.create_string_buffer(metadata_size)
+
+    err = lib.evo_irimager_multi_get_thermal_image_metadata(
+        id, w, h, thermalDataPointer, metadata_buffer
+    )
+    # metadata fields from buffer
+    timestamp = ctypes.cast(metadata_buffer, ctypes.POINTER(ctypes.c_double))[0]
+    temperature_min = ctypes.cast(metadata_buffer, ctypes.POINTER(ctypes.c_double))[1]
+    temperature_max = ctypes.cast(metadata_buffer, ctypes.POINTER(ctypes.c_double))[2]
+
+    temperatureData = ((thermalData - 1000.0) / 10.0)
+    metadata = {
+        "timestamp": timestamp,
+        "temperature_min": temperature_min,
+        "temperature_max": temperature_max
+    }
+
+    return temperatureData, metadata, err
+
 # @brief Accessor to an RGB palette image by reference
 # data format: unsigned char array (size 3 * w * h) r,g,b
 # @param[in] w image width
@@ -283,6 +310,12 @@ class ShutterMode(Enum):
     MANUAL = 0
     AUTO = 1
 
+class EvoIRFrameMetadata(ctypes.Structure):
+    _fields_ = [
+        ("timestamp", ctypes.c_double),
+        ("temperature_min", ctypes.c_double)
+        ("temperature_max", ctypes.c_double), #checking these for now
+    ]
 
 def set_shutter_mode(shutterMode: ShutterMode) -> int:
     return lib.evo_irimager_set_shutter_mode(shutterMode.value)
