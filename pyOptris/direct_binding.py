@@ -98,16 +98,10 @@ def get_palette_image_size() -> Tuple[int, int]:
     return width.value, height.value
 
 def get_multi_palette_image_size(id: int) -> Tuple[int, int, int]:
-
-    width = ctypes.c_int()
-    height = ctypes.c_int()
-
-    # Calling function with ID and pointers to width and height
-    err = lib.evo_irimager_multi_get_palette_image_size(ctypes.c_long(id), ctypes.byref(width), ctypes.byref(height))
-    if err != 0:  
-        print(f"Error getting multi palette image size for camera ID {id}: {err}")
-        return -1, -1, err  
-
+    width = ctypes.c_int() 
+    height = ctypes.c_int() 
+    
+    err = lib.evo_irimager_multi_get_palette_image_size(id, ctypes.byref(width), ctypes.byref(height))
     return width.value, height.value, err
 
 # @brief Accessor to thermal image by reference
@@ -191,15 +185,16 @@ def get_palette_image(width: int, height: int) -> np.ndarray:
 
 
 def get_multi_palette_image(id: int, width: int, height: int) -> np.ndarray:
-    w = ctypes.byref(ctypes.c_int(width))
-    h = ctypes.byref(ctypes.c_int(height))
+    w = ctypes.c_int(width)
+    h = ctypes.c_int(height)
+    id = ctypes.c_long(id)
 
     # allocates memory for the palette data
     paletteData = np.empty((height, width, 3), dtype=np.uint8)  # 3 for RGB
     paletteDataPointer = paletteData.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
 
     # calling function multi-camera palette image
-    retVal = lib.evo_irimager_multi_get_palette_image(id, w, h, paletteDataPointer)
+    retVal = lib.evo_irimager_multi_get_palette_image(id, ctypes.byref(w), ctypes.byref(h), paletteDataPointer)
 
     if retVal != 0:
         raise RuntimeError(f"Error getting multi palette image for ID {id}: {retVal}")
