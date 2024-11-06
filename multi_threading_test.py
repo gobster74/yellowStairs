@@ -40,18 +40,23 @@ def initialize_cameras():
     err,ID1 = optris.multi_usb_init(xml_files[0],None, 'log_name')
     if err != 0:
         print(f"Failed to initialize PI 1M: {err}")
-        return False, None, None
+        return False, None, None, None, None
     print(f"PI 1M ID: {ID1} Serial: {optris.get_multi_get_serial(ID1)}")
 
     # PI 640i
     err,ID2 = optris.multi_usb_init(xml_files[1],None,'log_name')
     if err != 0:
         print(f"Failed to initialize PI 640i: {err}")
-        return False, None, None
+        return False, None, None, None, None
     print(f"PI 640i ID: {ID2} Serial: {optris.get_multi_get_serial(ID2)}")
 
     print("Cameras initialized successfully.")
-    return True,ID1,ID2
+
+    #dimesions for the GUI (test) 
+    width_1m, height_1m = 764, 480
+    width_640i, height_640i = 640, 480
+ 
+    return True,ID1,ID2, width_1m + width_640i, max(height_1m, height_640i)
 
 def close_camera():
     try:
@@ -164,23 +169,23 @@ def start_cameras(ID1,ID2):
     threading.Thread(target=process_pi_1m, daemon=True,args=(ID1,)).start()
     threading.Thread(target=process_pi_640i, daemon=True,args=(ID2,)).start()
 
-def create_gui():
+def create_gui(total_width, total_height):
     global label_img_1m, label_img_640i
 
     window = tk.Tk()
     window.title("Thermal Camera Control")
-    window.geometry("1500x600")  # Adjusted for better layout
+    window.geometry(f"{total_width}x{total_height + 100}")  
 
     # Frame for camera display
     frame_display = tk.Frame(window)
     frame_display.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     # Label to display camera output for PI 1M
-    label_img_1m = tk.Label(frame_display)
+    label_img_1m = tk.Label(frame_display, width = total_width // 2, height = total_height)
     label_img_1m.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     # Label to display camera output for PI 640i
-    label_img_640i = tk.Label(frame_display)
+    label_img_640i = tk.Label(frame_display, width = total_width // 2, height = total_height)
     label_img_640i.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     # Controls at the bottom
@@ -213,10 +218,10 @@ def on_closing(window):
 
 if __name__ == "__main__":
     # Initialize both cameras using multi_usb_init
-    err,ID1,ID2 = initialize_cameras()
-    if not err:
-        print("Camera initialization failed. Exiting...")
-    else:
-        # Start capturing frames from both cameras in separate threads
-        start_cameras(ID1,ID2)
-        create_gui()  # Start the GUI
+    success, ID1, ID2, total_width, total_height = initialize_cameras()
+    if not success:
+        print("Cameras failed to initialize...")
+    else: 
+        start_cameras(ID1, ID2)
+
+        create_gui(total_width, total_height)

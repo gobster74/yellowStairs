@@ -134,11 +134,11 @@ def process_pi_640i(ID):
     global frame_buffer_640i, times_computer_640i, running
 
     try:
-        w, h = 642, 480  # PI 640i resolution
+        w, h = 640, 480  # PI 640i resolution
 
         while running:
             thermal_image = optris.get_multi_thermal_image(ID,w, h)[0]
-            temperatureData = (thermal_image - 1000.0) / 10.0
+            temperatureData = (thermal_image - 950.0) / 10.0
             normalized_image = cv2.normalize(temperatureData, None, 0, 255, cv2.NORM_MINMAX)
             color_image = cv2.applyColorMap(np.uint8(normalized_image), cv2.COLORMAP_JET)
             cv2.putText(color_image, f"Camera: PI 640i ({frame_mode} frame)", (10, 30),
