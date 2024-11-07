@@ -6,6 +6,9 @@ import threading
 import tkinter as tk
 from PIL import Image, ImageTk
 import ctypes
+from threading import Lock
+import os
+
 # Global variables
 recording = False
 frame_buffer_1m = []
@@ -14,6 +17,11 @@ times_computer_1m = []
 times_computer_640i = []
 running = True
 frame_mode = 'full'  # for initialization
+recording_lock = Lock()
+log_dir = "logs"
+frame_data_dir = "frame_data"
+running_event = threading.Event()
+
 
 # Camera frame configuration, information is already inside of the xml file
 camera_frames = {
@@ -30,6 +38,9 @@ camera_frames = {
 def initialize_cameras():
     print("Initializing cameras...")
 
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     # Load XML file 
     xml_files = [
         camera_frames['PI 1M'][frame_mode],
@@ -37,14 +48,14 @@ def initialize_cameras():
     ]
 
     # PI 1M
-    err,ID1 = optris.multi_usb_init(xml_files[0],None, 'log_name')
+    err,ID1 = optris.multi_usb_init(xml_files[0],None, os.path.join(log_dir, f'log_1m_{int(time.time())}.log'))
     if err != 0:
         print(f"Failed to initialize PI 1M: {err}")
         return False, None, None, None, None
     print(f"PI 1M ID: {ID1} Serial: {optris.get_multi_get_serial(ID1)}")
 
     # PI 640i
-    err,ID2 = optris.multi_usb_init(xml_files[1],None,'log_name')
+    err,ID2 = optris.multi_usb_init(xml_files[1],None, os.path.join(log_dir, f'log_640i_{int(time.time())}.log'))
     if err != 0:
         print(f"Failed to initialize PI 640i: {err}")
         return False, None, None, None, None
@@ -65,36 +76,40 @@ def close_camera():
     except Exception as e:
         print(f"Failed to terminate cameras: {e}")
 
-def toggle_recording(camera):
+def toggle_recording(ID):
     global recording
-    recording = not recording
+    with recording_lock:
+        recording = not recording
     if recording:
-        print(f"Recording started on {camera}")
+        print(f"Recording started on {ID}")
     else:
-        stop_recording(camera)
+        stop_recording(ID)
 
-def stop_recording(camera):
+def stop_recording(ID):
     global frame_buffer_1m, frame_buffer_640i, times_computer_1m, times_computer_640i
-    if camera == 'PI 1M' and frame_buffer_1m:
-        filename_prefix = f'frame_buffer_{camera}_{int(time.time())}'
-        with open(f'{filename_prefix}.bin', 'wb') as f:
-            np.save(f, np.array(frame_buffer_1m))  # Save frame buffer as binary
-        with open(f'{filename_prefix}_times.bin', 'wb') as f:
-            np.save(f, np.array(times_computer_1m))  # Save timestamps as binary
-        print(f"Recording stopped and files saved for {camera}: {filename_prefix}")
-        frame_buffer_1m = []
-        times_computer_1m = []
-    elif camera == 'PI 640i' and frame_buffer_640i:
-        filename_prefix = f'frame_buffer_{camera}_{int(time.time())}'
-        with open(f'{filename_prefix}.bin', 'wb') as f:
-            np.save(f, np.array(frame_buffer_640i))  # Save frame buffer as binary
-        with open(f'{filename_prefix}_times.bin', 'wb') as f:
-            np.save(f, np.array(times_computer_640i))  # Save timestamps as binary
-        print(f"Recording stopped and files saved for {camera}: {filename_prefix}")
-        frame_buffer_640i = []
-        times_computer_640i = []
-    else:
-        print(f"No data to save for {camera}")
+    with recording_lock:
+        if ID == ID1 and frame_buffer_1m:
+            save_recording(ID, frame_buffer_1m, times_computer_1m)
+            frame_buffer_1m=[]
+            times_computer_1m = []
+        elif ID == ID2 and frame_buffer_640i:
+            save_recording(ID, frame_buffer_640i, times_computer_640i)
+            frame_buffer_640i = []
+            times_computer_640i = []
+        else:
+            print(f"No data to save for {ID}")
+
+if not os.path.exists(frame_data_dir):
+    os.makedirs(frame_data_dir)
+
+def save_recording(camera_name, frame_buffer, timestamps):       
+    timestamp = int(time.time())
+    filename_prefix = f'{frame_data_dir}/frame_buffer_{camera_name}_{timestamp}'
+    with open(f'{filename_prefix}.bin', 'wb') as f:
+        np.save(f, np.array(frame_buffer))
+    with open(f'{filename_prefix}_times.bin', 'wb') as f:
+        np.save(f, np.array(timestamps))
+    print(f'Recording stopped and files saved for {camera_name}: {filename_prefix}')
 
 def switch_frame():
     global frame_mode
@@ -124,10 +139,10 @@ def process_pi_1m(ID):
             # Update the Tkinter label with the new image
             label_img_1m.imgtk = imgtk
             label_img_1m.configure(image=imgtk)
-
-            if recording:
-                frame_buffer_1m.append(thermal_image)
-                times_computer_1m.append(time.time())
+            with recording_lock:
+                if recording:
+                    frame_buffer_1m.append(thermal_image)
+                    times_computer_1m.append(time.time())
 
             time.sleep(0.1)
 
@@ -155,10 +170,10 @@ def process_pi_640i(ID):
             # Update the Tkinter label with the new image
             label_img_640i.imgtk = imgtk
             label_img_640i.configure(image=imgtk)
-
-            if recording:
-                frame_buffer_640i.append(thermal_image)
-                times_computer_640i.append(time.time())
+            with recording_lock:
+                if recording:
+                    frame_buffer_640i.append(thermal_image)
+                    times_computer_640i.append(time.time())
 
             time.sleep(0.1)
 
@@ -193,11 +208,11 @@ def create_gui(total_width, total_height):
     frame_controls.pack(side=tk.BOTTOM, fill=tk.X)
 
     record_button_1m = tk.Button(frame_controls, text="Start/Stop Recording (PI 1M)",
-                                  command=lambda: toggle_recording('PI 1M'))
+                                  command=lambda: toggle_recording(ID1))
     record_button_1m.pack(side=tk.LEFT, padx=5, pady=5)
 
     record_button_640i = tk.Button(frame_controls, text="Start/Stop Recording (PI 640i)",
-                                    command=lambda: toggle_recording('PI 640i'))
+                                    command=lambda: toggle_recording(ID2))
     record_button_640i.pack(side=tk.LEFT, padx=5, pady=5)
 
     switch_frame_button = tk.Button(frame_controls, text="Switch Full/Reduced Frame", command=switch_frame)
@@ -210,8 +225,8 @@ def create_gui(total_width, total_height):
     window.mainloop()
 
 def on_closing(window):
-    global running
-    running = False  # Stop live view
+    global running_event
+    running_event.clear()
     close_camera()
     window.quit()
     window.destroy()
